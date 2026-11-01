@@ -18,7 +18,6 @@
 package io.fireflysoftware.experience.lending.core.application.adapter;
 
 import io.fireflysoftware.domain.common.contracts.sdk.api.KitDocumentsControllerApi;
-import io.fireflysoftware.domain.common.contracts.sdk.model.IssueBody;
 import io.fireflysoftware.domain.lending.loan.origination.sdk.api.LoanOriginationApi;
 import io.fireflysoftware.domain.lending.loan.origination.sdk.model.ApplicationPartyDTO;
 import io.fireflysoftware.domain.lending.loan.origination.sdk.model.UpdateApplicationEmploymentDataCommand;
@@ -104,12 +103,7 @@ public class DomainLoanApplicationAdapterImpl implements LoanApplicationPort {
                                 String getKey = IdempotencyKeys.of(
                                         "exp-lending", "create-application", "get",
                                         applicationId.toString());
-                                return loanOriginationApi.getApplication(applicationId, getKey)
-                                        .flatMap(dto -> kitDocumentsApi.issue(
-                                                new IssueBody().templateCode("contract")
-                                                        .partyId(validated.getPartyId())
-                                                        .contractId(applicationId),
-                                                getKey).thenReturn(dto));
+                                return loanOriginationApi.getApplication(applicationId, getKey);
                             })
                             .map(dto -> mapToDetail(dto,
                                     validated.getRequestedAmount(),
@@ -123,6 +117,9 @@ public class DomainLoanApplicationAdapterImpl implements LoanApplicationPort {
         if (command == null) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED",
                     "createApplication command is required");
+        }
+        if (command.getPartyId() == null) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "partyId is required");
         }
         if (command.getProductId() == null) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED",

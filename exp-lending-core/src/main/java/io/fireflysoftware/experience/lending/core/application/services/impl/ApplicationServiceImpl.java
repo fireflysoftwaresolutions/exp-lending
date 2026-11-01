@@ -71,7 +71,11 @@ public class ApplicationServiceImpl implements ApplicationService {
 
     @Override
     public Mono<ApplicationDetailDTO> createApplication(CreateApplicationCommand command) {
-        UUID partyId = command.getPartyId() != null ? command.getPartyId() : command.getProductId();
+        if (command == null || command.getPartyId() == null) {
+            return Mono.error(new org.fireflyframework.web.error.exceptions.BusinessException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "partyId is required"));
+        }
+        UUID partyId = command.getPartyId();
         return AccessGuard.require(identityPort, accessPort, IdentityPort.SAMPLE_USERNAME,
                 AccessRequest.of(partyId, AccessAction.CREATE, "APPLICATION", null),
                 () -> businessParameters.findByKey(MIN_CREDIT_SCORE_KEY).flatMap(minimum ->

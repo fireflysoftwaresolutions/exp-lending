@@ -18,7 +18,6 @@
 package io.fireflysoftware.experience.lending.core.application.services;
 
 import io.fireflysoftware.domain.common.contracts.sdk.api.KitDocumentsControllerApi;
-import io.fireflysoftware.domain.common.contracts.sdk.model.IssueBody;
 import io.fireflysoftware.domain.common.contracts.sdk.model.RecordedId;
 import io.fireflysoftware.domain.lending.loan.origination.sdk.api.LoanOriginationApi;
 import io.fireflysoftware.domain.lending.loan.origination.sdk.model.LoanApplicationDTO;
@@ -84,6 +83,7 @@ class ApplicationServiceImplTest {
         var command = new CreateApplicationCommand();
         command.setSimulationId(simulationId);
         command.setProductId(UUID.randomUUID());
+        command.setPartyId(UUID.randomUUID());
         command.setRequestedAmount(new BigDecimal("15000"));
         command.setTerm(36);
         command.setPurpose("PERSONAL");
@@ -98,10 +98,7 @@ class ApplicationServiceImplTest {
                     assertThat(result.getPurpose()).isEqualTo("PERSONAL");
                 })
                 .verifyComplete();
-        verify(kitDocumentsApi).issue(org.mockito.ArgumentMatchers.argThat(body ->
-                body instanceof IssueBody issue
-                        && "contract".equals(issue.getTemplateCode())
-                        && applicationId.equals(issue.getContractId())), any());
+        org.mockito.Mockito.verifyNoInteractions(kitDocumentsApi);
     }
 
     @Test
@@ -122,6 +119,7 @@ class ApplicationServiceImplTest {
         var command = new CreateApplicationCommand();
         command.setSimulationId(simulationId);
         command.setProductId(UUID.randomUUID());
+        command.setPartyId(UUID.randomUUID());
         command.setRequestedAmount(new BigDecimal("9000"));
         command.setTerm(24);
         command.setPurpose("CAR");
@@ -148,6 +146,7 @@ class ApplicationServiceImplTest {
 
         var command = new CreateApplicationCommand();
         command.setProductId(UUID.randomUUID());
+        command.setPartyId(UUID.randomUUID());
         command.setRequestedAmount(new BigDecimal("1000"));
         command.setTerm(12);
         command.setPurpose("HOME_IMPROVEMENT");
@@ -164,12 +163,32 @@ class ApplicationServiceImplTest {
 
         var command = new CreateApplicationCommand();
         command.setProductId(UUID.randomUUID());
+        command.setPartyId(UUID.randomUUID());
         command.setRequestedAmount(new BigDecimal("5000"));
         command.setTerm(18);
 
         StepVerifier.create(service.createApplication(command))
                 .expectErrorMessage("upstream error")
                 .verify();
+    }
+
+    @Test
+    void createApplication_rejectsMissingPartyBeforeCallingOwners() {
+        var applicationId = UUID.randomUUID();
+        lenient().when(loanOriginationApi.submitApplication(any(SubmitApplicationCommand.class), any()))
+                .thenReturn(Mono.just(Map.of("loanApplicationId", applicationId)));
+        lenient().when(loanOriginationApi.getApplication(eq(applicationId), any()))
+                .thenReturn(Mono.just(new LoanApplicationDTO().loanApplicationId(applicationId)));
+        var command = new CreateApplicationCommand();
+        command.setProductId(UUID.randomUUID());
+        command.setSimulationId(UUID.randomUUID());
+        command.setRequestedAmount(new BigDecimal("5000"));
+        command.setTerm(18);
+
+        StepVerifier.create(service.createApplication(command))
+                .expectError(BusinessException.class)
+                .verify();
+        org.mockito.Mockito.verifyNoInteractions(loanOriginationApi, kitDocumentsApi);
     }
 
     @Test
@@ -187,6 +206,7 @@ class ApplicationServiceImplTest {
     void createApplication_rejectsNonPositiveRequestedAmount_withBusinessException() {
         var command = new CreateApplicationCommand();
         command.setProductId(UUID.randomUUID());
+        command.setPartyId(UUID.randomUUID());
         command.setRequestedAmount(BigDecimal.ZERO);
         command.setTerm(18);
 
@@ -199,6 +219,7 @@ class ApplicationServiceImplTest {
     void createApplication_rejectsZeroTerm_withBusinessException() {
         var command = new CreateApplicationCommand();
         command.setProductId(UUID.randomUUID());
+        command.setPartyId(UUID.randomUUID());
         command.setRequestedAmount(new BigDecimal("5000"));
         command.setTerm(0);
 
