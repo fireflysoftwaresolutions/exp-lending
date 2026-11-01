@@ -30,20 +30,20 @@ import reactor.core.publisher.Mono;
  * The operation is {@code GET /api/v1/parameters/by-key/{key}}.
  * This class does not call core-common-config-mgmt and does not copy the sandbox table.
  */
-@Component
-public class HttpBusinessParameterAdapter implements BusinessParameterPort {
+@Component("httpBusinessParameterAdapter")
+public class HttpBusinessParameterAdapterImpl implements BusinessParameterPort {
 
     private final BusinessParametersApi parameters;
 
     @Autowired
-    public HttpBusinessParameterAdapter(
+    public HttpBusinessParameterAdapterImpl(
             @Value("${api-configuration.domain-platform.configuration.base-path:http://localhost:8094}") String basePath) {
         ApiClient client = new ApiClient();
         client.setBasePath(trim(basePath));
         this.parameters = new BusinessParametersApi(client);
     }
 
-    HttpBusinessParameterAdapter(BusinessParametersApi parameters) {
+    HttpBusinessParameterAdapterImpl(BusinessParametersApi parameters) {
         this.parameters = parameters;
     }
 

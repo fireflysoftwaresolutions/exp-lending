@@ -55,9 +55,9 @@ import java.util.UUID;
  */
 @Slf4j
 @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name = "firefly.experience.lending.ports.loan-servicing", havingValue = "domain", matchIfMissing = true)
-@Component
+@Component("domainLoanServicingAdapter")
 @RequiredArgsConstructor
-public class DomainLoanServicingAdapter implements LoanServicingPort {
+public class DomainLoanServicingAdapterImpl implements LoanServicingPort {
 
     private final LoanServicingApi loanServicingApi;
     private final LoanServicingQueriesApi loanServicingQueriesApi;

@@ -21,7 +21,7 @@ import reactor.core.publisher.Mono;
 
 /**
  * Read side of domain-core-configuration business parameters.
- * {@link io.fireflysoftware.experience.lending.core.adapter.HttpBusinessParameterAdapter}
+ * {@link io.fireflysoftware.experience.lending.core.adapter.HttpBusinessParameterAdapterImpl}
  * calls the generated domain SDK operation {@code GET /api/v1/parameters/by-key/{key}}.
  * The journey does not store parameter values.
  */

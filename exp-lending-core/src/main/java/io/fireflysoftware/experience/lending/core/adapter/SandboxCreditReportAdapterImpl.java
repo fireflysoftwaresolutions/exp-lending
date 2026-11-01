@@ -33,9 +33,9 @@ import reactor.core.publisher.Mono;
  * The decision service applies its own sandbox report when the journey does not send a score.
  * Replace the bureau behind that service with {@code firefly.decision.credit-report}, not here.
  */
-@Component
+@Component("sandboxCreditReportAdapter")
 @ConditionalOnProperty(name = "firefly.experience.credit-report.adapter", havingValue = "sandbox", matchIfMissing = true)
-public class SandboxCreditReportAdapter implements CreditReportPort {
+public class SandboxCreditReportAdapterImpl implements CreditReportPort {
 
     public static final int EXAMPLE_CREDIT_SCORE = 640;
 

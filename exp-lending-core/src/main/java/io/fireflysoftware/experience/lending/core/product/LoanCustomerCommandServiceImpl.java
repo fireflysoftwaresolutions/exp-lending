@@ -43,9 +43,9 @@ import java.util.UUID;
  * Rate, close, and payment holiday call {@link LoanServicingApi}.
  * Agreement status, close, and cancel use the product domain when that saga exists.
  */
-@Service
+@Service("loanCustomerCommandService")
 @RequiredArgsConstructor
-public class LoanCustomerCommandService {
+public class LoanCustomerCommandServiceImpl {
 
     private final IdentityPort identityPort;
     private final AccessPort accessPort;

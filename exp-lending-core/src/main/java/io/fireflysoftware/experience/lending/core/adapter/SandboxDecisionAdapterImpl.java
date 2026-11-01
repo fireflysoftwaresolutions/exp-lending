@@ -31,9 +31,9 @@ import reactor.core.publisher.Mono;
  * {@code POST /api/v1/decisions} on domain-lending-credit-scoring unless
  * {@code firefly.experience.decision.adapter=sandbox}.
  */
-@Component
+@Component("sandboxDecisionAdapter")
 @ConditionalOnProperty(name = "firefly.experience.decision.adapter", havingValue = "sandbox")
-public class SandboxDecisionAdapter implements DecisionPort {
+public class SandboxDecisionAdapterImpl implements DecisionPort {
 
     @Override
     public Mono<DecisionResult> decide(DecisionRequest request) {

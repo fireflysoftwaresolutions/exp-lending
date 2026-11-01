@@ -65,7 +65,7 @@ class HttpPaymentsAdapterTest {
             return MonoResponse.status(HttpStatus.NOT_FOUND, "");
         }).build();
 
-        HttpPaymentsAdapter adapter = new HttpPaymentsAdapter(client);
+        HttpPaymentsAdapterImpl adapter = new HttpPaymentsAdapterImpl(client);
         PaymentInstruction instruction = new PaymentInstruction(UUID.randomUUID(), null, new BigDecimal("25"),
                 PaymentKind.DISBURSEMENT, PaymentPath.OUTBOUND);
 
@@ -101,7 +101,7 @@ class HttpPaymentsAdapterTest {
             }));
         }).build();
 
-        PaymentTry tried = new HttpPaymentsAdapter(client).tryPayment(new PaymentInstruction(
+        PaymentTry tried = new HttpPaymentsAdapterImpl(client).tryPayment(new PaymentInstruction(
                 loanId, UUID.randomUUID(), new BigDecimal("10"), PaymentKind.INSTALLMENT, PaymentPath.INTERNAL)).block();
 
         assertThat(tried.challengeId()).isNull();
@@ -121,7 +121,7 @@ class HttpPaymentsAdapterTest {
             return MonoResponse.ok("{}");
         }).build();
 
-        StepVerifier.create(new HttpPaymentsAdapter(client).confirm(UUID.randomUUID(), "sandbox"))
+        StepVerifier.create(new HttpPaymentsAdapterImpl(client).confirm(UUID.randomUUID(), "sandbox"))
                 .expectErrorSatisfies(error -> assertThat(error)
                         .isInstanceOf(IllegalArgumentException.class)
                         .hasMessageContaining("sandbox"))
@@ -138,7 +138,7 @@ class HttpPaymentsAdapterTest {
             return MonoResponse.ok("{\"paymentId\":\"" + paymentId + "\",\"phase\":\"CANCELLED\"}");
         }).build();
 
-        StepVerifier.create(new HttpPaymentsAdapter(client).cancel(paymentId))
+        StepVerifier.create(new HttpPaymentsAdapterImpl(client).cancel(paymentId))
                 .verifyComplete();
         assertThat(path.get()).isEqualTo("/api/v1/payments/" + paymentId + "/cancellations");
     }

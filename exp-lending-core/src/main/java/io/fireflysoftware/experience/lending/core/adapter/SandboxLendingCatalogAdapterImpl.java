@@ -41,15 +41,15 @@ import java.util.UUID;
 /**
  * Deterministic product routes. An installer replaces this class with domain-core-configuration.
  */
-@Component
+@Component("sandboxLendingCatalogAdapter")
 @ConditionalOnProperty(name = "firefly.experience.lending.catalog", havingValue = "sandbox", matchIfMissing = true)
-public class SandboxLendingCatalogAdapter implements LendingCatalogPort {
+public class SandboxLendingCatalogAdapterImpl implements LendingCatalogPort {
 
     private final CreditProductRoute defaultRoute;
     private final Map<UUID, ProductRoute> products;
     private final Map<String, String> loanOperations;
 
-    public SandboxLendingCatalogAdapter() {
+    public SandboxLendingCatalogAdapterImpl() {
         ObjectMapper mapper = new ObjectMapper();
         try (InputStream in = new ClassPathResource("lending-product-routes.json").getInputStream()) {
             JsonNode root = mapper.readTree(in);

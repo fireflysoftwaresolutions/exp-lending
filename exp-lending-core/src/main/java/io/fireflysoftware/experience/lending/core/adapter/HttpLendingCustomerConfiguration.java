@@ -46,7 +46,7 @@ public class HttpLendingCustomerConfiguration {
                                                PersonalLoansApi personalLoans,
                                                AssetFinanceApi assetFinance,
                                                SupplyChainFinanceAgreementsApi supplyChain) {
-        return new SdkCreditProductClient(mortgages, personalLoans, assetFinance, supplyChain);
+        return new SdkCreditProductClientImpl(mortgages, personalLoans, assetFinance, supplyChain);
     }
 
     @Bean

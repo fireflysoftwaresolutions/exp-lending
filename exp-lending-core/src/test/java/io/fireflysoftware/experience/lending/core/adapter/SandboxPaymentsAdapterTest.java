@@ -31,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class SandboxPaymentsAdapterTest {
 
-    private final SandboxPaymentsAdapter adapter = new SandboxPaymentsAdapter();
+    private final SandboxPaymentsAdapterImpl adapter = new SandboxPaymentsAdapterImpl();
 
     @Test
     void outboundTryReturnsChallengeAndWrongResponseDoesNotConfirm() {
@@ -44,11 +44,11 @@ class SandboxPaymentsAdapterTest {
         assertThat(tried.challengeValue()).isNotEqualTo("sandbox");
 
         StepVerifier.create(adapter.confirm(tried.paymentId(), "sandbox"))
-                .expectError(SandboxPaymentsAdapter.PaymentNotConfirmedException.class)
+                .expectError(SandboxPaymentsAdapterImpl.PaymentNotConfirmedException.class)
                 .verify();
 
         StepVerifier.create(adapter.confirm(tried.paymentId(), "wrong"))
-                .expectError(SandboxPaymentsAdapter.PaymentNotConfirmedException.class)
+                .expectError(SandboxPaymentsAdapterImpl.PaymentNotConfirmedException.class)
                 .verify();
 
         StepVerifier.create(adapter.confirm(tried.paymentId(), tried.challengeValue()))

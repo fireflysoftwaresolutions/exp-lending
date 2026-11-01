@@ -43,14 +43,14 @@ import java.util.UUID;
 /**
  * Opens and services a credit product through the domain SDK for that product kind.
  */
-public final class SdkCreditProductClient implements CreditProductPort {
+public final class SdkCreditProductClientImpl implements CreditProductPort {
 
     private final MortgageAgreementsApi mortgages;
     private final PersonalLoansApi personalLoans;
     private final AssetFinanceApi assetFinance;
     private final SupplyChainFinanceAgreementsApi supplyChain;
 
-    public SdkCreditProductClient(MortgageAgreementsApi mortgages,
+    public SdkCreditProductClientImpl(MortgageAgreementsApi mortgages,
                                    PersonalLoansApi personalLoans,
                                    AssetFinanceApi assetFinance,
                                    SupplyChainFinanceAgreementsApi supplyChain) {

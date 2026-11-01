@@ -20,23 +20,21 @@ package io.fireflysoftware.experience.lending.core.adapter;
 import io.fireflysoftware.experience.lending.core.ports.AccessDecision;
 import io.fireflysoftware.experience.lending.core.ports.AccessPort;
 import io.fireflysoftware.experience.lending.core.ports.AccessRequest;
-import io.fireflysoftware.experience.lending.core.ports.SecurityCenterClient;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 /**
- * Default security-center adapter. Active when {@code firefly.experience.access.adapter=domain}.
- * A future BPM engine replaces this class, not the bureau adapter inside the data domain.
+ * Allows every sample journey so OpenPlatform can run without an external identity provider.
+ * Replace it by setting {@code firefly.experience.access.adapter=domain}, which selects
+ * {@link DomainAccessAdapterImpl} and calls domain-core-security-center.
  */
-public class DomainAccessAdapter implements AccessPort {
-
-    private final SecurityCenterClient securityCenterClient;
-
-    public DomainAccessAdapter(SecurityCenterClient securityCenterClient) {
-        this.securityCenterClient = securityCenterClient;
-    }
+@Component("sandboxAccessAdapter")
+@ConditionalOnProperty(name = "firefly.experience.access.adapter", havingValue = "sandbox")
+public class SandboxAccessAdapterImpl implements AccessPort {
 
     @Override
     public Mono<AccessDecision> check(AccessRequest request) {
-        return securityCenterClient.check(request);
+        return Mono.just(AccessDecision.grant());
     }
 }

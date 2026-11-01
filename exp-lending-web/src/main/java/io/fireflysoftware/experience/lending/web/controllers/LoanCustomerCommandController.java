@@ -19,7 +19,7 @@ package io.fireflysoftware.experience.lending.web.controllers;
 
 import io.fireflysoftware.experience.lending.core.application.queries.ApplicationDetailDTO;
 import io.fireflysoftware.experience.lending.core.product.ContractView;
-import io.fireflysoftware.experience.lending.core.product.LoanCustomerCommandService;
+import io.fireflysoftware.experience.lending.core.product.LoanCustomerCommandServiceImpl;
 import io.fireflysoftware.experience.lending.core.product.LoanCustomerOperation;
 import io.fireflysoftware.experience.lending.core.product.PaymentReceipt;
 import io.fireflysoftware.experience.lending.core.product.RateChangeReason;
@@ -47,7 +47,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class LoanCustomerCommandController {
 
-    private final LoanCustomerCommandService commands;
+    private final LoanCustomerCommandServiceImpl commands;
 
     @PostMapping("/loans/{loanId}/rate")
     public Mono<Void> changeRate(@PathVariable UUID loanId, @RequestBody RateBody body) {

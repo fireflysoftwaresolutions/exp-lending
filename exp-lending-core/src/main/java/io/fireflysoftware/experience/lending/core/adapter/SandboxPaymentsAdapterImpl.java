@@ -34,9 +34,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * In-memory try and confirm for unit tests. The running journey does not use this class.
  * Select it only with {@code firefly.experience.payments.adapter=sandbox}.
  */
-@Component
+@Component("sandboxPaymentsAdapter")
 @ConditionalOnProperty(name = "firefly.experience.payments.adapter", havingValue = "sandbox")
-public class SandboxPaymentsAdapter implements PaymentsPort {
+public class SandboxPaymentsAdapterImpl implements PaymentsPort {
 
     private final ConcurrentHashMap<UUID, Pending> pending = new ConcurrentHashMap<>();
 

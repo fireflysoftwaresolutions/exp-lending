@@ -23,7 +23,7 @@ import io.fireflysoftware.domain.lending.loan.servicing.sdk.model.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.fireflysoftware.experience.lending.core.servicing.commands.RequestEarlyRepaymentCommand;
 import io.fireflysoftware.experience.lending.core.servicing.commands.RequestRestructuringCommand;
-import io.fireflysoftware.experience.lending.core.servicing.adapter.DomainLoanServicingAdapter;
+import io.fireflysoftware.experience.lending.core.servicing.adapter.DomainLoanServicingAdapterImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -56,11 +56,11 @@ class LoanServicingServiceImplTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    private DomainLoanServicingAdapter service;
+    private DomainLoanServicingAdapterImpl service;
 
     @BeforeEach
     void setUp() {
-        service = new DomainLoanServicingAdapter(
+        service = new DomainLoanServicingAdapterImpl(
                 loanServicingApi, loanServicingQueriesApi, objectMapper);
     }
 

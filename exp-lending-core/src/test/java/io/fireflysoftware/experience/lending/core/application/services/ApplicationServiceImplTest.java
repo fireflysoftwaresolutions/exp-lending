@@ -25,7 +25,7 @@ import io.fireflysoftware.domain.lending.loan.origination.sdk.model.LoanApplicat
 import io.fireflysoftware.domain.lending.loan.origination.sdk.model.SubmitApplicationCommand;
 import io.fireflysoftware.experience.lending.core.application.commands.CreateApplicationCommand;
 import io.fireflysoftware.experience.lending.core.application.commands.UpdateApplicationCommand;
-import io.fireflysoftware.experience.lending.core.application.adapter.DomainLoanApplicationAdapter;
+import io.fireflysoftware.experience.lending.core.application.adapter.DomainLoanApplicationAdapterImpl;
 import org.fireflyframework.web.error.exceptions.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -56,12 +56,12 @@ class ApplicationServiceImplTest {
     @Mock
     private KitDocumentsControllerApi kitDocumentsApi;
 
-    private DomainLoanApplicationAdapter service;
+    private DomainLoanApplicationAdapterImpl service;
 
     @BeforeEach
     void setUp() {
         lenient().when(kitDocumentsApi.issue(any(), any())).thenReturn(Mono.just(new RecordedId().id(UUID.randomUUID())));
-        service = new DomainLoanApplicationAdapter(loanOriginationApi, kitDocumentsApi);
+        service = new DomainLoanApplicationAdapterImpl(loanOriginationApi, kitDocumentsApi);
     }
 
     @Test

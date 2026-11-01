@@ -46,9 +46,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * That is also the default, so a missing property does not fall through to the in-memory sandbox.
  * This class does not generate a challenge and does not treat the word sandbox as a valid code.
  */
-@Component
+@Component("httpPaymentsAdapter")
 @ConditionalOnProperty(name = "firefly.experience.payments.adapter", havingValue = "hub", matchIfMissing = true)
-public class HttpPaymentsAdapter implements PaymentsPort {
+public class HttpPaymentsAdapterImpl implements PaymentsPort {
 
     private static final String OUTBOUND_SCHEME = "DOMESTIC_OUTBOUND";
     private static final String INTERNAL_SCHEME = "INTERNAL_TRANSFER";
@@ -60,14 +60,14 @@ public class HttpPaymentsAdapter implements PaymentsPort {
     private final ConcurrentHashMap<UUID, PaymentInstruction> started = new ConcurrentHashMap<>();
 
     @Autowired
-    public HttpPaymentsAdapter(
+    public HttpPaymentsAdapterImpl(
             @Value("${api-configuration.domain-platform.payments.base-path:http://localhost:8092}") String basePath) {
         ApiClient apiClient = new ApiClient();
         apiClient.setBasePath(basePath);
         this.payments = new PaymentsApi(apiClient);
     }
 
-    HttpPaymentsAdapter(WebClient webClient) {
+    HttpPaymentsAdapterImpl(WebClient webClient) {
         this.payments = new PaymentsApi(new ApiClient(webClient));
     }
 
@@ -89,7 +89,7 @@ public class HttpPaymentsAdapter implements PaymentsPort {
                 .destinationAccountId(instruction.loanId())
                 .thirdPartyReference(reference);
         return payments.tryPayment(command, null)
-                .onErrorMap(WebClientResponseException.class, HttpPaymentsAdapter::hubFailure)
+                .onErrorMap(WebClientResponseException.class, HttpPaymentsAdapterImpl::hubFailure)
                 .map(result -> {
                     UUID paymentId = result.getPaymentId();
                     started.put(paymentId, instruction);
@@ -109,14 +109,14 @@ public class HttpPaymentsAdapter implements PaymentsPort {
         }
         Confirmation confirmation = new Confirmation().response(challengeResponse);
         return payments.confirmPayment(paymentId, confirmation, null)
-                .onErrorMap(WebClientResponseException.class, HttpPaymentsAdapter::hubFailure)
+                .onErrorMap(WebClientResponseException.class, HttpPaymentsAdapterImpl::hubFailure)
                 .map(result -> receipt(paymentId, result));
     }
 
     @Override
     public Mono<Void> cancel(UUID paymentId) {
         return payments.cancelPayment(paymentId, null)
-                .onErrorMap(WebClientResponseException.class, HttpPaymentsAdapter::hubFailure)
+                .onErrorMap(WebClientResponseException.class, HttpPaymentsAdapterImpl::hubFailure)
                 .then();
     }
 
