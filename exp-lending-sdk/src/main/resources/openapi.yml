@@ -1542,6 +1542,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApplicationDetailDTO"
+  /api/v1/experience/lending/application-intakes:
+    post:
+      tags:
+      - DraftLoanIntakes
+      summary: Create or replay an authorized DRAFT loan intake
+      description: "Preserves exact retained simulation terms. The receipt contains\
+        \ the initial DRAFT/PENDING_DOCUMENTS status, not an offer, contract, approval,\
+        \ or disbursement."
+      operationId: createDraftApplicationIntake
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DraftApplicationRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DraftApplicationReceipt"
+      security:
+      - lendingExperienceIntakeBearer: []
+      x-disable-idempotency: true
   /api/v1/experience/lending/agreements/{agreementId}/commands/{operation}:
     post:
       tags:
@@ -3903,6 +3928,81 @@ components:
         updatedAt:
           type: string
           format: date-time
+    DraftApplicationRequest:
+      required:
+      - currency
+      - partyId
+      - productId
+      - requestId
+      - requestedAmount
+      - simulationId
+      - term
+      type: object
+      properties:
+        requestId:
+          type: string
+          format: uuid
+        simulationId:
+          type: string
+          format: uuid
+        productId:
+          type: string
+          format: uuid
+        partyId:
+          type: string
+          format: uuid
+        requestedAmount:
+          minimum: 0.01
+          exclusiveMinimum: false
+          type: number
+        term:
+          minimum: 1
+          type: integer
+          format: int32
+        currency:
+          pattern: "[A-Z]{3}"
+          type: string
+        purpose:
+          maxLength: 50
+          type: string
+    DraftApplicationReceipt:
+      type: object
+      properties:
+        requestId:
+          type: string
+          format: uuid
+        applicationId:
+          type: string
+          format: uuid
+        simulationId:
+          type: string
+          format: uuid
+        productId:
+          type: string
+          format: uuid
+        partyId:
+          type: string
+          format: uuid
+        requestedAmount:
+          type: number
+        term:
+          type: integer
+          format: int32
+        currency:
+          type: string
+        purpose:
+          type: string
+        initialStatusCode:
+          type: string
+        initialSubStatusCode:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        replayed:
+          type: boolean
+        intentDigest:
+          type: string
     TaskDTO:
       type: object
       properties:
@@ -4574,3 +4674,8 @@ components:
           type: string
         type:
           type: string
+  securitySchemes:
+    lendingExperienceIntakeBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

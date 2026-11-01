@@ -19,6 +19,9 @@ package io.fireflysoftware.experience.lending.web.config;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
+import org.fireflyframework.common.application.config.WebFluxJacksonCodecAutoConfiguration;
+import org.fireflyframework.web.jackson.config.JsonNullableAutoConfiguration;
 import org.springframework.http.codec.ServerCodecConfigurer;
 import org.springframework.util.unit.DataSize;
 import org.springframework.web.reactive.config.WebFluxConfigurer;
@@ -30,6 +33,7 @@ import org.springframework.web.reactive.config.WebFluxConfigurer;
  * stay intact — we only override the codec's in-memory size.
  */
 @Configuration
+@ImportAutoConfiguration({JsonNullableAutoConfiguration.class, WebFluxJacksonCodecAutoConfiguration.class})
 public class CodecLimitsConfig implements WebFluxConfigurer {
 
     private final int maxInMemorySize;
