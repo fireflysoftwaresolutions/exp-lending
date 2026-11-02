@@ -13,7 +13,7 @@ Developed by the Firefly Software Foundation. [dev@fireflysoftware.io](mailto:de
 
 [Website](https://fireflysoftware.io/) · [OpenPlatform](https://fireflysoftware.io/openplatform/) · [Module catalogue](https://fireflysoftware.io/openplatform/modules/)
 
-> Backend-for-Frontend service for the lending portal — covers loan simulation, application lifecycle, underwriting decisions, contract signing, active loan servicing, personal loans, asset finance, and collections
+> Experience service for lending channels. Routes span origination and servicing; supported behavior and qualification limits are documented per operation.
 
 ## Table of Contents
 
@@ -31,9 +31,13 @@ Developed by the Firefly Software Foundation. [dev@fireflysoftware.io](mailto:de
 
 The two simulation routes currently return `503 LENDING_TERMS_UNAVAILABLE` after existing validation. They do not register administrative pricing or persist an unverified calculation. Eligibility remains a separate operation. Exact, authorized product terms and currency-policy references are required before numerical simulations can be enabled. See [Simulation availability](docs/simulation-availability.md) for the response contract and integration dependency.
 
+## Managed application evidence
+
+The existing upload route now sends actual document content through the generated Loan Origination Domain SDK and returns observed owner identifiers. It requires the caller’s original action UUID and supports recovery of the same operation. See [Managed application evidence](docs/managed-application-evidence.md) for configuration, identity, limits, response semantics, and remaining integration gates.
+
 ## Overview
 
-`exp-lending` is the experience-layer service that powers all lending-related screens across the digital channel. It covers the full credit lifecycle — from the initial product simulation and eligibility check, through multi-step application management, underwriting decision retrieval, offer selection, SCA-protected contract signing, post-disbursement loan servicing, and asset finance agreement management, down to collections case handling.
+`exp-lending` exposes lending-channel routes for applications, evidence, decisions, offers, signing, servicing, asset finance, and collections. The route inventory is not proof that every lifecycle is implemented or integrated. Draft intake has separate integration evidence; managed application evidence now has complete source and generated-SDK qualification. Its four-owner deployment test and the remaining product lifecycles are still pending.
 
 The service uses **simple stateless composition** throughout. Every endpoint delegates to one or more downstream domain SDK calls, maps the result to an experience-layer DTO, and returns. There is no `@Workflow`, no Redis, and no persistent journey state within this service. The loan application lifecycle (create, update, submit, withdraw) is managed as individual independent SDK calls to the loan origination domain service, with each state transition owned by the domain layer.
 

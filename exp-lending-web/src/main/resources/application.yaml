@@ -14,6 +14,9 @@ spring:
       - org.springframework.boot.autoconfigure.data.redis.RedisReactiveAutoConfiguration
 
 firefly:
+  openapi:
+    instant-scalar:
+      enabled: true
   cache:
     enabled: true
     redis:

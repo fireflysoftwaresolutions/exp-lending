@@ -34,5 +34,7 @@ public interface ApplicationDocumentsService {
 
     Mono<ApplicationDocumentDTO> uploadDocument(UUID applicationId, UploadDocumentCommand command);
 
+    Mono<ApplicationDocumentDTO> recoverDocument(UUID applicationId,UUID originalActionId);
+
     Mono<Void> deleteDocument(UUID applicationId, UUID documentId);
 }

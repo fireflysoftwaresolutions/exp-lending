@@ -35,6 +35,9 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
+import java.time.Instant;
+import java.util.Map;
+import java.util.Base64;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -65,6 +68,7 @@ class ApplicationDocumentsControllerTest {
 
     private static final UUID APPLICATION_ID = UUID.randomUUID();
     private static final UUID DOCUMENT_ID = UUID.randomUUID();
+    private static final UUID STORED_DOCUMENT_ID = UUID.randomUUID(), ACTION_ID=UUID.randomUUID();
     private static final String BASE_PATH = "/api/v1/experience/lending/applications/{id}/documents";
 
     @Test
@@ -112,7 +116,7 @@ class ApplicationDocumentsControllerTest {
                 .fileName("payslip.pdf")
                 .documentType("application/pdf")
                 .uploadedAt(LocalDateTime.now())
-                .size(512L)
+                .size(512L).actionId(ACTION_ID).associationId(DOCUMENT_ID).storedDocumentId(STORED_DOCUMENT_ID).partyId(UUID.randomUUID()).storedAt(Instant.now()).attachedAt(Instant.now()).contentDigest("a".repeat(64)).documentIntentDigest("b".repeat(64)).associationIntentDigest("c".repeat(64)).associationState("ATTACHED").verificationStatus("PENDING").replayed(false)
                 .build();
 
         when(applicationDocumentsService.uploadDocument(eq(APPLICATION_ID), any(UploadDocumentCommand.class)))
@@ -121,12 +125,7 @@ class ApplicationDocumentsControllerTest {
         webTestClient.post()
                 .uri(BASE_PATH, APPLICATION_ID)
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue("""
-                        {
-                            "fileName": "payslip.pdf",
-                            "documentType": "application/pdf"
-                        }
-                        """)
+                .bodyValue(Map.of("actionId",ACTION_ID,"fileName","payslip.pdf","documentType","PAYSLIP","content",Base64.getEncoder().encodeToString(new byte[512])))
                 .exchange()
                 .expectStatus().isCreated()
                 .expectBody(ApplicationDocumentDTO.class)
@@ -134,6 +133,9 @@ class ApplicationDocumentsControllerTest {
                     assertThat(body.getDocumentId()).isEqualTo(DOCUMENT_ID);
                     assertThat(body.getFileName()).isEqualTo("payslip.pdf");
                     assertThat(body.getSize()).isEqualTo(512L);
+                    assertThat(body.getStoredDocumentId()).isEqualTo(STORED_DOCUMENT_ID).isNotEqualTo(body.getDocumentId());
+                    assertThat(body.getAssociationId()).isEqualTo(DOCUMENT_ID);
+                    assertThat(body.getActionId()).isEqualTo(ACTION_ID);
                 });
     }
 
@@ -145,9 +147,7 @@ class ApplicationDocumentsControllerTest {
         webTestClient.post()
                 .uri(BASE_PATH, APPLICATION_ID)
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue("""
-                        {"fileName": "fail.pdf", "documentType": "application/pdf"}
-                        """)
+                .bodyValue(Map.of("actionId",ACTION_ID,"fileName","fail.pdf","documentType","PAYSLIP","content","AQID"))
                 .exchange()
                 .expectStatus().is5xxServerError();
     }

@@ -1399,6 +1399,74 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ExternalAccountDTO"
+  /api/v1/experience/lending/applications/{id}/documents/actions/{actionId}/recovery:
+    post:
+      tags:
+      - Lending - Application Documents
+      summary: Recover original evidence custody and its application association
+      description: "May complete a missing association under current authority. Never\
+        \ uploads replacement bytes, generates another action or deletes retained\
+        \ Document custody."
+      operationId: recoverApplicationDocumentEvidence
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: actionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "201":
+          description: Original missing association completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationDocumentDTO"
+        "200":
+          description: Existing original association/content observed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationDocumentDTO"
+        "400":
+          description: Invalid original application/action
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationDocumentDTO"
+        "401":
+          description: Bearer authentication refused
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationDocumentDTO"
+        "403":
+          description: Current original signed-party authority refused
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationDocumentDTO"
+        "409":
+          description: Original action conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationEvidenceError"
+        "503":
+          description: Known partial progress or uncertain completion preserved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationEvidenceError"
+      security:
+      - lendingExperienceIntakeBearer: []
+      x-disable-idempotency: true
   /api/v1/experience/lending/applications/{id}/documents:
     get:
       tags:
@@ -1434,8 +1502,11 @@ paths:
     post:
       tags:
       - Lending - Application Documents
-      summary: Upload Document
-      description: Attaches a new document to a loan application.
+      summary: Upload actual application evidence and attach its retained owner reference
+      description: Requires the caller's original action and actual base64 content.
+        Party comes only from the signed current HUMAN identity. documentId remains
+        the legacy association identifier; storedDocumentId is the distinct Document
+        owner identity. Evidence verification remains PENDING.
       operationId: uploadDocument
       parameters:
       - name: id
@@ -1444,15 +1515,6 @@ paths:
         schema:
           type: string
           format: uuid
-      - name: X-Idempotency-Key
-        in: header
-        description: "Optional retry key for scoped POST, PUT, PATCH, and DELETE response\
-          \ reuse. Safe methods ignore it. Reuse requires configured trusted identity\
-          \ and namespace; changed input returns 409. Business effects require durable\
-          \ application idempotency."
-        required: false
-        schema:
-          type: string
       requestBody:
         content:
           application/json:
@@ -1460,12 +1522,58 @@ paths:
               $ref: "#/components/schemas/UploadDocumentCommand"
         required: true
       responses:
-        "200":
-          description: OK
+        "201":
+          description: Actual custody and original association observed
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApplicationDocumentDTO"
+        "200":
+          description: Same original action/content replayed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationDocumentDTO"
+        "400":
+          description: Missing action/content or invalid route/filename/type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationDocumentDTO"
+        "413":
+          description: JSON envelope exceeds3145728bytes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationDocumentDTO"
+        "401":
+          description: Bearer authentication refused
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationDocumentDTO"
+        "403":
+          description: Current original signed-party authority refused
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationDocumentDTO"
+        "409":
+          description: Original action has different evidence
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationEvidenceError"
+        "503":
+          description: Known owner progress retained or completion uncertain; recover
+            only the same original action
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationEvidenceError"
+      security:
+      - lendingExperienceIntakeBearer: []
+      x-disable-idempotency: true
   /api/v1/experience/lending/applications/{id}/contract/sign:
     post:
       tags:
@@ -3828,24 +3936,13 @@ components:
         registeredAt:
           type: string
           format: date-time
-    UploadDocumentCommand:
-      type: object
-      properties:
-        applicationId:
-          type: string
-          format: uuid
-        fileName:
-          type: string
-        documentType:
-          type: string
-        content:
-          type: string
-          format: byte
     ApplicationDocumentDTO:
       type: object
       properties:
         documentId:
           type: string
+          description: "Legacy application-document association identifier; equals\
+            \ associationId, not storedDocumentId"
           format: uuid
         applicationId:
           type: string
@@ -3856,10 +3953,103 @@ components:
           type: string
         uploadedAt:
           type: string
+          description: Legacy UTC display projection of attachedAt; authoritative
+            owner timestamps are storedAt and attachedAt
           format: date-time
         size:
           type: integer
           format: int64
+        actionId:
+          type: string
+          format: uuid
+        partyId:
+          type: string
+          format: uuid
+        associationId:
+          type: string
+          format: uuid
+        storedDocumentId:
+          type: string
+          format: uuid
+        documentTypeCode:
+          type: string
+        mediaType:
+          type: string
+        contentDigest:
+          type: string
+        documentIntentDigest:
+          type: string
+        associationIntentDigest:
+          type: string
+        storedAt:
+          $ref: "#/components/schemas/FireflyInstant"
+        attachedAt:
+          $ref: "#/components/schemas/FireflyInstant"
+        associationState:
+          type: string
+        verificationStatus:
+          type: string
+        replayed:
+          type: boolean
+    ApplicationEvidenceError:
+      type: object
+      properties:
+        actionId:
+          type: string
+          format: uuid
+        code:
+          type: string
+        outcome:
+          type: string
+          enum:
+          - CONFLICT
+          - OBSERVATION_UNAVAILABLE
+          - OUTCOME_UNKNOWN
+          - DOCUMENT_OUTCOME_UNKNOWN
+          - DOCUMENT_STORED_ASSOCIATION_UNAVAILABLE
+          - DOCUMENT_STORED_ASSOCIATION_UNKNOWN
+          - ASSOCIATION_COMMITTED_RESPONSE_UNAVAILABLE
+        recovery:
+          type: string
+        storedDocumentId:
+          type: string
+          format: uuid
+        associationId:
+          type: string
+          format: uuid
+        contentDigest:
+          type: string
+        documentIntentDigest:
+          type: string
+    UploadDocumentCommand:
+      required:
+      - actionId
+      - content
+      - documentType
+      - fileName
+      type: object
+      properties:
+        applicationId:
+          type: string
+          format: uuid
+        fileName:
+          maxLength: 200
+          minLength: 0
+          type: string
+        documentType:
+          minLength: 1
+          pattern: "[A-Z][A-Z0-9_]{0,49}"
+          type: string
+        content:
+          maxLength: 2796204
+          minLength: 4
+          type: string
+          description: Base64 of 1 through 2097152 decoded content bytes; JSON envelope
+            bounded to 3145728 bytes
+          format: byte
+        actionId:
+          type: string
+          format: uuid
     SignContractCommand:
       type: object
       properties:
@@ -4680,6 +4870,9 @@ components:
           type: string
         type:
           type: string
+    FireflyInstant:
+      type: string
+      format: date-time
   securitySchemes:
     lendingExperienceIntakeBearer:
       type: http

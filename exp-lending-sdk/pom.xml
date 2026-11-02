@@ -102,6 +102,9 @@
                             <apiPackage>io.fireflysoftware.experience.lending.sdk.api</apiPackage>
                             <modelPackage>io.fireflysoftware.experience.lending.sdk.model</modelPackage>
                             <invokerPackage>io.fireflysoftware.experience.lending.sdk.invoker</invokerPackage>
+                            <schemaMappings>
+                                <schemaMapping>FireflyInstant=java.time.Instant</schemaMapping>
+                            </schemaMappings>
                             <configOptions>
                                 <java20>true</java20>
                                 <useTags>true</useTags>
