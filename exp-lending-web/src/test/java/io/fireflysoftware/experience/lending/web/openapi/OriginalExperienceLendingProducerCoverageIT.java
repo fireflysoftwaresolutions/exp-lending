@@ -25,8 +25,19 @@ class OriginalExperienceLendingProducerCoverageIT {
             .path("intentDigest").path("type").asText()).isEqualTo("string");
         var operation=produced.path("paths").path(ADDITION.getFirst()).path("post");
         assertThat(operation.path("security").findValues("lendingExperienceIntakeBearer")).hasSize(1);
+        var responses=operation.path("responses");
+        assertThat(responses.properties().stream().map(Map.Entry::getKey).toList()).containsExactlyInAnyOrder("200","201");
+        for(String status:List.of("200","201"))assertThat(responses.path(status).path("content").path("application/json")
+            .path("schema").path("$ref").asText()).isEqualTo("#/components/schemas/DraftApplicationReceipt");
+        var prior=mapper.readTree(bounded("lending.experience.producer.priorProduced"));
+        var expectedDocument=(com.fasterxml.jackson.databind.node.ObjectNode)prior.deepCopy();
+        var actualDocument=(com.fasterxml.jackson.databind.node.ObjectNode)produced.deepCopy();
+        expectedDocument.remove("servers");actualDocument.remove("servers");
+        ((com.fasterxml.jackson.databind.node.ObjectNode)actualDocument.path("paths").path(ADDITION.getFirst()).path("post"))
+            .set("responses",expectedDocument.path("paths").path(ADDITION.getFirst()).path("post").path("responses").deepCopy());
+        assertThat(actualDocument).isEqualTo(expectedDocument);
         var receipt=new LinkedHashMap<String,Object>();receipt.put("originalOperations",before);receipt.put("producedOperations",after);
-        receipt.put("exactNewOperation",ADDITION);receipt.put("nativeYamlSemanticComparison",true);
+        receipt.put("exactNewOperation",ADDITION);receipt.put("nativeYamlSemanticComparison",true);receipt.put("exactTypedCreate201Replay200",true);receipt.put("onlySuccessResponseMapAndServerUrlChanged",true);
         Files.writeString(Path.of(required("lending.experience.producer.coverage")),new com.fasterxml.jackson.databind.ObjectMapper()
             .writerWithDefaultPrettyPrinter().writeValueAsString(receipt)+"\n");
     }

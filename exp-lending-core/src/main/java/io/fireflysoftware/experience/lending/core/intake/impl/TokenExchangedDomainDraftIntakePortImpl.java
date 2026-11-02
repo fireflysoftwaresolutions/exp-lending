@@ -11,6 +11,7 @@ import java.net.http.HttpClient;
 import java.time.*;
 import java.util.*;
 import org.springframework.http.HttpStatus;
+import org.fireflyframework.web.error.exceptions.BusinessException;
 import org.springframework.http.client.reactive.JdkClientHttpConnector;
 import org.springframework.security.oauth2.client.endpoint.*;
 import org.springframework.security.oauth2.client.registration.ClientRegistration;
@@ -55,7 +56,10 @@ public final class TokenExchangedDomainDraftIntakePortImpl implements DomainDraf
         final DraftApplicationRequest request;
         try{request=capture(supplied);}catch(RuntimeException invalid){return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST,"Exact draft intake request required"));}
         return Mono.defer(()->{Instant started=clock.instant();long before=System.nanoTime();
-            return subjects.current(request).flatMap(original->{Jwt subject=original.getToken();
+            var known=new java.util.concurrent.atomic.AtomicReference<DraftApplicationReceipt>();
+            var authority=new java.util.concurrent.atomic.AtomicReference<org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken>();
+            var attempted=new java.util.concurrent.atomic.AtomicBoolean();
+            return subjects.current(request).flatMap(original->{authority.set(original);Jwt subject=original.getToken();
                 return exchange.getTokenResponse(new TokenExchangeGrantRequest(registration,subject,null))
                     .timeout(remaining(started,before)).switchIfEmpty(Mono.error(unavailable())).flatMap(response->{
                         var token=response.getAccessToken();
@@ -66,14 +70,22 @@ public final class TokenExchangedDomainDraftIntakePortImpl implements DomainDraf
                                 var client=new ApiClient(transport);client.setBasePath(settings.domainEndpoint().toASCIIString());client.setBearerToken(token.getTokenValue());
                                 var body=new DraftLoanIntakeRequest().requestId(request.requestId()).simulationId(request.simulationId()).productId(request.productId())
                                     .partyId(request.partyId()).requestedAmount(request.requestedAmount()).term(request.term()).currency(request.currency()).purpose(request.purpose());
+                                attempted.set(true);
                                 return new DraftLoanIntakesApi(client).createDraftLoanIntake(body).timeout(remaining(started,before))
-                                    .switchIfEmpty(Mono.error(unavailable())).map(value->receipt(request,value))
+                                    .switchIfEmpty(Mono.error(unavailable())).map(value->receipt(request,value)).doOnNext(known::set)
                                     .flatMap(value->subjects.revalidate(original,request).then(Mono.fromCallable(()->{remaining(started,before);return value;})));
                             }));
                         });
                     });
-            }).timeout(remaining(started,before));
-        }).onErrorMap(TokenExchangedDomainDraftIntakePortImpl::safe);
+            }).timeout(remaining(started,before)).onErrorResume(error->{
+                var completed=known.get();
+                BusinessException owner=error instanceof WebClientResponseException http?ownerOutcome(http,request.requestId()):null;
+                if(completed==null && owner==null)return Mono.error(attempted.get()&&uncertain(error)?outcomeUnknown(request.requestId()):safe(error));
+                BusinessException outcome=completed==null?owner:completedUnavailable(request.requestId(),completed.intentDigest());
+                return subjects.revalidate(authority.get(),request).thenReturn(true).onErrorReturn(false)
+                    .flatMap(current->Mono.<DraftApplicationReceipt>error(current?outcome:withoutDigest(outcome)));
+            });
+        });
     }
     private static DraftApplicationRequest capture(DraftApplicationRequest r){
         if(r==null)throw new IllegalArgumentException();for(UUID id:new UUID[]{r.requestId(),r.simulationId(),r.productId(),r.partyId()})
@@ -98,6 +110,35 @@ public final class TokenExchangedDomainDraftIntakePortImpl implements DomainDraf
     }
     private Duration remaining(Instant started,long before){long elapsed=System.nanoTime()-before;var wall=Duration.between(clock.instant(),started.plusSeconds(5));var mono=Duration.ofSeconds(5).minusNanos(elapsed);
         if(elapsed<0 || wall.isZero() || wall.isNegative() || mono.isZero() || mono.isNegative())throw unavailable();return wall.compareTo(mono)<0?wall:mono;}
+    static BusinessException ownerOutcome(WebClientResponseException error,UUID requestId){
+        if(error.getStatusCode().value()!=503)return null;
+        byte[] body=error.getResponseBodyAsByteArray();if(body.length==0 || body.length>16384)return null;
+        try{
+            var content=error.getHeaders().getContentType();if(content==null || !content.getType().equals("application") || !(content.getSubtype().equals("json") || content.getSubtype().equals("problem+json")))return null;
+            var mapper=new com.fasterxml.jackson.databind.ObjectMapper().enable(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
+                .enable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
+            var root=mapper.readTree(body);if(root==null || !root.isObject() || !root.path("status").isIntegralNumber() || root.path("status").asInt()!=503)return null;
+            boolean top=root.has("code"),nested=root.path("extensions").has("code");if(top==nested)return null;
+            var envelope=top?root:root.path("extensions");String code=envelope.path("code").asText();
+            boolean committed=code.equals("LENDING_INTAKE_COMMITTED_RESPONSE_UNAVAILABLE");
+            if(!committed && !code.equals("LENDING_INTAKE_OUTCOME_UNKNOWN"))return null;
+            var metadata=envelope.path("metadata");String outcome=committed?"COMMITTED":"UNKNOWN";
+            if(!metadata.isObject() || !requestId.toString().equals(metadata.path("requestId").asText()) || !outcome.equals(metadata.path("outcome").asText())
+                || !"SAME_REQUEST_ID_EXACT_REPLAY".equals(metadata.path("recovery").asText()))return null;
+            var safe=new HashMap<String,Object>();safe.put("requestId",requestId.toString());safe.put("outcome",outcome);safe.put("recovery","SAME_REQUEST_ID_EXACT_REPLAY");
+            if(committed && metadata.has("intentDigest")){String digest=metadata.path("intentDigest").asText();if(!digest.matches("[0-9a-f]{64}"))return null;safe.put("intentDigest",digest);}
+            return new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,code,committed?"Draft intake committed; response unavailable. Recover using the same request ID and exact original terms.":"Draft intake outcome unavailable. Recover using the same request ID and exact original terms.",safe);
+        }catch(java.io.IOException|RuntimeException invalid){return null;}
+    }
+    static BusinessException withoutDigest(BusinessException error){var metadata=new HashMap<>(error.getMetadata());metadata.remove("intentDigest");return new BusinessException(error.getStatus(),error.getCode(),error.getMessage(),metadata);}
+    private static BusinessException completedUnavailable(UUID requestId,String digest){return new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"LENDING_INTAKE_COMMITTED_RESPONSE_UNAVAILABLE",
+        "Draft intake committed; response unavailable. Recover using the same request ID and exact original terms.",Map.of("requestId",requestId.toString(),"outcome","COMMITTED","recovery","SAME_REQUEST_ID_EXACT_REPLAY","intentDigest",digest));}
+    private static BusinessException outcomeUnknown(UUID requestId){return new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"LENDING_INTAKE_OUTCOME_UNKNOWN",
+        "Draft intake outcome unavailable. Recover using the same request ID and exact original terms.",Map.of("requestId",requestId.toString(),"outcome","UNKNOWN","recovery","SAME_REQUEST_ID_EXACT_REPLAY"));}
+    private static boolean uncertain(Throwable error){
+        if(error instanceof WebClientResponseException http)return !Set.of(400,401,403,404,409,422).contains(http.getStatusCode().value());
+        if(error instanceof ResponseStatusException status)return !Set.of(400,401,403,404,409,422).contains(status.getStatusCode().value());return true;
+    }
     private static Throwable safe(Throwable error){
         if(error instanceof ResponseStatusException status)return new ResponseStatusException(status.getStatusCode(),"Lending intake owner is unavailable");
         if(error instanceof WebClientResponseException http){int code=http.getStatusCode().value();return new ResponseStatusException(Set.of(400,401,403,404,409,422,503).contains(code)?HttpStatus.valueOf(code):HttpStatus.SERVICE_UNAVAILABLE,"Lending intake owner is unavailable");}

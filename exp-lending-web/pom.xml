@@ -93,7 +93,10 @@
         <dependency>
             <groupId>org.fireflyframework</groupId>
             <artifactId>fireflyframework-security-resource-server</artifactId>
-            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.fireflyframework</groupId>
+            <artifactId>fireflyframework-cache-postgres</artifactId>
         </dependency>
     </dependencies>
 

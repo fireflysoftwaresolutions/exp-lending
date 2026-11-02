@@ -39,19 +39,21 @@ class VerifiedLendingJwtWebFilterTest {
     static final String PATH="/api/v1/experience/lending/application-intakes",SCOPE="lending:applications:draft:create";
     final KeyPair keys=keys();
     static KeyPair keys(){try{var generator=KeyPairGenerator.getInstance("RSA");generator.initialize(2048);return generator.generateKeyPair();}catch(GeneralSecurityException error){throw new IllegalStateException(error);}}
-    String token(KeyPair pair){var key=new RSAKey.Builder((RSAPublicKey)pair.getPublic()).privateKey((RSAPrivateKey)pair.getPrivate()).build();
+    String token(KeyPair pair){return token(pair,TENANT);}
+    String token(KeyPair pair,String platformTenant){var key=new RSAKey.Builder((RSAPublicKey)pair.getPublic()).privateKey((RSAPrivateKey)pair.getPrivate()).build();
         var encoder=new NimbusJwtEncoder(new ImmutableJWKSet<>(new JWKSet(key)));Instant now=Instant.now();
         var claims=JwtClaimsSet.builder().issuer(ISSUER).subject(SUBJECT).audience(List.of("experience-lending")).issuedAt(now).notBefore(now.minusSeconds(1)).expiresAt(now.plusSeconds(60))
-            .claim("client_id","lending-browser").claim("tenant_id",TENANT).claim("party_id","da2e5152-36ea-490a-a211-e3d9e5668511").claim("principal_kind","HUMAN").claim("scope",SCOPE).claim("roles",List.of("APPLICANT")).build();
+            .claim("client_id","lending-browser").claim("tenant_id",platformTenant).claim("party_id","da2e5152-36ea-490a-a211-e3d9e5668511").claim("principal_kind","HUMAN").claim("scope",SCOPE).claim("roles",List.of("APPLICANT")).build();
         return encoder.encode(JwtEncoderParameters.from(JwsHeader.with(SignatureAlgorithm.RS256).build(),claims)).getTokenValue();}
     ReactiveJwtDecoder decoder(){var decoder=NimbusReactiveJwtDecoder.withPublicKey((RSAPublicKey)keys.getPublic()).build();decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(ISSUER));return decoder;}
     Converter<Jwt,Mono<AbstractAuthenticationToken>> projection(){return new JwtToFireflyPrincipalConverter(
         new PrincipalFactory(new ConfigurableAuthorityMapper(new AuthorityMappingProperties(List.of("roles"),List.of("scope"),"ROLE_"))),
         new ConfigurableTenantResolver(List.of("tenant_id")),true);}
     VerifiedLendingJwtWebFilterImpl filter(ReactiveJwtDecoder decoder,Converter<Jwt,Mono<AbstractAuthenticationToken>> projection){return new VerifiedLendingJwtWebFilterImpl(decoder,projection,ISSUER,TENANT,PATH);}
-    WebTestClient client(ProbeController controller){var decoder=decoder();var projection=projection();
+    WebTestClient client(ProbeController controller){return client(controller,TENANT);}
+    WebTestClient client(ProbeController controller,String urlPolicyTenant){var decoder=decoder();var projection=projection();
         var global=new ResourceServerAutoConfiguration().fireflySecurityWebFilterChain(ServerHttpSecurity.http(),decoder,projection,(principal,action,resource,context)->{
-            assertThat(principal.subject()).isEqualTo(SUBJECT);assertThat(principal.issuer()).isEqualTo(ISSUER);assertThat(principal.tenantId()).isEqualTo(TENANT);
+            assertThat(principal.subject()).isEqualTo(SUBJECT);assertThat(principal.issuer()).isEqualTo(ISSUER);assertThat(principal.tenantId()).isEqualTo(urlPolicyTenant);
             return Mono.just(Decision.permit());
         },new ResourceServerProperties());
         return WebTestClient.bindToController(controller).webFilter(new WebFilterChainProxy(global),
@@ -70,6 +72,9 @@ class VerifiedLendingJwtWebFilterTest {
         client.get().uri(PATH+"/projection").headers(h->h.setBearerAuth(token(keys()))).exchange().expectStatus().isUnauthorized();
         client.get().uri(PATH+"/projection").exchange().expectStatus().isUnauthorized();
         client.get().uri(PATH+"/projection").header(HttpHeaders.AUTHORIZATION,"Bearer "+token,"Bearer unrelated-unit-token").exchange().expectStatus().isUnauthorized();
+        String foreignTenant="foreign-platform-namespace";
+        client(controller,foreignTenant).get().uri(PATH+"/projection").headers(h->h.setBearerAuth(token(keys,foreignTenant))).exchange()
+            .expectStatus().isUnauthorized().expectHeader().valueMatches(HttpHeaders.WWW_AUTHENTICATE,".*invalid_token.*");
         assertThat(controller.calls).hasValue(0);
     }
     @Test void unrelatedRoutesRemainProtectedByTheOriginalGlobalChain(){

@@ -1558,8 +1558,14 @@ paths:
               $ref: "#/components/schemas/DraftApplicationRequest"
         required: true
       responses:
+        "201":
+          description: Draft intake created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DraftApplicationReceipt"
         "200":
-          description: OK
+          description: Exact draft intake replay
           content:
             application/json:
               schema:
