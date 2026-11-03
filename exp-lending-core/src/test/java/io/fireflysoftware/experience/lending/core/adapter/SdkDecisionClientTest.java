@@ -34,6 +34,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import org.mockito.ArgumentCaptor;
 
 class SdkDecisionClientTest {
 
@@ -46,12 +48,19 @@ class SdkDecisionClientTest {
                 .outcome(DecisionResponse.OutcomeEnum.REFER)
                 .reasonCodes(List.of("CREDIT_SCORE_BELOW_THRESHOLD"))));
 
-        StepVerifier.create(new DomainDecisionConfiguration.SdkDecisionClient(decisions).decide(
+        StepVerifier.create(new DomainDecisionConfiguration.SdkDecisionClientImpl(decisions).decide(
                         new DecisionRequest(partyId, productId, JourneyStep.LENDING_APPLICATION, Map.of())))
                 .assertNext(result -> {
                     assertThat(result.outcome()).isEqualTo(DecisionOutcome.REFER);
                     assertThat(result.reasonCodes()).containsExactly("CREDIT_SCORE_BELOW_THRESHOLD");
                 })
                 .verifyComplete();
+        ArgumentCaptor<io.fireflysoftware.domain.lending.creditscoring.sdk.model.DecisionRequest> body =
+                ArgumentCaptor.forClass(io.fireflysoftware.domain.lending.creditscoring.sdk.model.DecisionRequest.class);
+        verify(decisions).evaluateDecision(body.capture());
+        assertThat(body.getValue().getPartyId()).isEqualTo(partyId);
+        assertThat(body.getValue().getProductId()).isEqualTo(productId);
+        assertThat(body.getValue().getJourneyStep().name()).isEqualTo(JourneyStep.LENDING_APPLICATION.name());
+        assertThat(body.getValue().getAttributes()).isEmpty();
     }
 }

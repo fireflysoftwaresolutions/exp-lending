@@ -42,13 +42,18 @@ class HttpPaymentsAdapterTest {
         UUID paymentId = UUID.randomUUID();
         UUID challengeId = UUID.randomUUID();
         String challengeValue = "9f3a1c7e";
+        AtomicReference<String> tryBody = new AtomicReference<>();
         AtomicReference<String> confirmBody = new AtomicReference<>();
         WebClient client = WebClient.builder().exchangeFunction(request -> {
             String path = request.url().getPath();
             if (path.equals("/api/v1/payments/tries")) {
-                return MonoResponse.created(
-                        "{\"paymentId\":\"" + paymentId + "\",\"challengeId\":\"" + challengeId
-                                + "\",\"challengeValue\":\"" + challengeValue + "\",\"amount\":25}");
+                MockClientHttpRequest mock = new MockClientHttpRequest(request.method(), request.url());
+                return request.writeTo(mock, ExchangeStrategies.withDefaults()).then(reactor.core.publisher.Mono.defer(() -> {
+                    tryBody.set(mock.getBodyAsString().block());
+                    return MonoResponse.created(
+                            "{\"paymentId\":\"" + paymentId + "\",\"challengeId\":\"" + challengeId
+                                    + "\",\"challengeValue\":\"" + challengeValue + "\",\"amount\":25}");
+                }));
             }
             if (path.equals("/api/v1/payments/" + paymentId + "/confirmations")) {
                 MockClientHttpRequest mock = new MockClientHttpRequest(request.method(), request.url());
@@ -60,7 +65,7 @@ class HttpPaymentsAdapterTest {
             return MonoResponse.status(HttpStatus.NOT_FOUND, "");
         }).build();
 
-        HttpPaymentsAdapter adapter = new HttpPaymentsAdapter(client);
+        HttpPaymentsAdapterImpl adapter = new HttpPaymentsAdapterImpl(client);
         PaymentInstruction instruction = new PaymentInstruction(UUID.randomUUID(), null, new BigDecimal("25"),
                 PaymentKind.DISBURSEMENT, PaymentPath.OUTBOUND);
 
@@ -69,6 +74,7 @@ class HttpPaymentsAdapterTest {
         assertThat(tried.challengeId()).isEqualTo(challengeId);
         assertThat(tried.challengeValue()).isEqualTo(challengeValue);
         assertThat(tried.challengeValue()).isNotEqualTo("sandbox");
+        assertThat(tryBody.get()).contains("\"scheme\":\"DOMESTIC_OUTBOUND\"");
 
         StepVerifier.create(adapter.confirm(paymentId, tried.challengeValue()))
                 .assertNext(receipt -> {
@@ -95,7 +101,7 @@ class HttpPaymentsAdapterTest {
             }));
         }).build();
 
-        PaymentTry tried = new HttpPaymentsAdapter(client).tryPayment(new PaymentInstruction(
+        PaymentTry tried = new HttpPaymentsAdapterImpl(client).tryPayment(new PaymentInstruction(
                 loanId, UUID.randomUUID(), new BigDecimal("10"), PaymentKind.INSTALLMENT, PaymentPath.INTERNAL)).block();
 
         assertThat(tried.challengeId()).isNull();
@@ -115,7 +121,7 @@ class HttpPaymentsAdapterTest {
             return MonoResponse.ok("{}");
         }).build();
 
-        StepVerifier.create(new HttpPaymentsAdapter(client).confirm(UUID.randomUUID(), "sandbox"))
+        StepVerifier.create(new HttpPaymentsAdapterImpl(client).confirm(UUID.randomUUID(), "sandbox"))
                 .expectErrorSatisfies(error -> assertThat(error)
                         .isInstanceOf(IllegalArgumentException.class)
                         .hasMessageContaining("sandbox"))
@@ -132,7 +138,7 @@ class HttpPaymentsAdapterTest {
             return MonoResponse.ok("{\"paymentId\":\"" + paymentId + "\",\"phase\":\"CANCELLED\"}");
         }).build();
 
-        StepVerifier.create(new HttpPaymentsAdapter(client).cancel(paymentId))
+        StepVerifier.create(new HttpPaymentsAdapterImpl(client).cancel(paymentId))
                 .verifyComplete();
         assertThat(path.get()).isEqualTo("/api/v1/payments/" + paymentId + "/cancellations");
     }

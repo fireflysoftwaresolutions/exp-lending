@@ -13,7 +13,7 @@ Developed by the Firefly Software Foundation. [dev@fireflysoftware.io](mailto:de
 
 [Website](https://fireflysoftware.io/) · [OpenPlatform](https://fireflysoftware.io/openplatform/) · [Module catalogue](https://fireflysoftware.io/openplatform/modules/)
 
-> Backend-for-Frontend service for the lending portal — covers loan simulation, application lifecycle, underwriting decisions, contract signing, active loan servicing, personal loans, asset finance, and collections
+> Experience service for lending channels. Routes span origination and servicing; supported behavior and qualification limits are documented per operation.
 
 ## Table of Contents
 
@@ -27,9 +27,17 @@ Developed by the Firefly Software Foundation. [dev@fireflysoftware.io](mailto:de
 - [Running Locally](#running-locally)
 - [Testing](#testing)
 
+## Simulation availability
+
+The two simulation routes currently return `503 LENDING_TERMS_UNAVAILABLE` after existing validation. They do not register administrative pricing or persist an unverified calculation. Eligibility remains a separate operation. Exact, authorized product terms and currency-policy references are required before numerical simulations can be enabled. See [Simulation availability](docs/simulation-availability.md) for the response contract and integration dependency.
+
+## Managed application evidence
+
+The existing upload route now sends actual document content through the generated Loan Origination Domain SDK and returns observed owner identifiers. It requires the caller’s original action UUID and supports recovery of the same operation. See [Managed application evidence](docs/managed-application-evidence.md) for configuration, identity, limits, response semantics, and remaining integration gates.
+
 ## Overview
 
-`exp-lending` is the experience-layer service that powers all lending-related screens across the digital channel. It covers the full credit lifecycle — from the initial product simulation and eligibility check, through multi-step application management, underwriting decision retrieval, offer selection, SCA-protected contract signing, post-disbursement loan servicing, and asset finance agreement management, down to collections case handling.
+`exp-lending` exposes lending-channel routes for applications, evidence, decisions, offers, signing, servicing, asset finance, and collections. The route inventory is not proof that every lifecycle is implemented or integrated. Draft intake has separate integration evidence; managed application evidence now has complete source and generated-SDK qualification. Its four-owner deployment test and the remaining product lifecycles are still pending.
 
 The service uses **simple stateless composition** throughout. Every endpoint delegates to one or more downstream domain SDK calls, maps the result to an experience-layer DTO, and returns. There is no `@Workflow`, no Redis, and no persistent journey state within this service. The loan application lifecycle (create, update, submit, withdraw) is managed as individual independent SDK calls to the loan origination domain service, with each state transition owned by the domain layer.
 
@@ -102,8 +110,8 @@ exp-lending  (port 8102)
 
 | Method | Path | Description | Response |
 |--------|------|-------------|----------|
-| `POST` | `/api/v1/experience/lending/simulations` | Compute a loan simulation for a given amount, term, and product type | `201 Created` |
-| `GET` | `/api/v1/experience/lending/simulations/{id}` | Retrieve a previously created loan simulation by its identifier | `200 OK` |
+| `POST` | `/api/v1/experience/lending/simulations` | Requires verified owner terms; performs no pricing write | `503 LENDING_TERMS_UNAVAILABLE` |
+| `POST` | `/api/v1/experience/lending/simulations/configure` | Retains input validation; performs no calculation or persistence | `400 Bad Request` or `503 LENDING_TERMS_UNAVAILABLE` |
 | `POST` | `/api/v1/experience/lending/eligibility` | Evaluate whether a party is eligible for a given product and requested amount | `200 OK` |
 
 ### Application Lifecycle
@@ -296,6 +304,14 @@ api-configuration:
 
 ## Running Locally
 
+Provision the technical PostgreSQL cache before starting this service. Set
+`CACHE_DB_HOST`, `CACHE_DB_PORT`, `CACHE_DB_NAME`, `CACHE_DB_USERNAME`,
+`CACHE_DB_PASSWORD`, and `CACHE_DB_SCHEMA`. `CACHE_DB_SSL_MODE` defaults to
+`verify-full`. The cache schema and `cache_entries` table are provisioned
+separately; automatic schema creation is disabled. Give this service its own
+restricted cache credentials, without access to Core business databases.
+Read credentials from the deployment environment rather than committing them.
+
 ```bash
 # Prerequisites — ensure all downstream services are running or accessible
 cd exp-lending
@@ -312,12 +328,49 @@ Swagger UI and API docs are disabled in the `pro` profile.
 mvn clean verify
 ```
 
-Tests cover each service implementation in `exp-lending-core` (unit tests with mocked SDK clients using Mockito and `StepVerifier`) and all 11 controllers in `exp-lending-web` (WebTestClient-based tests verifying HTTP status codes and response shapes for all 83 endpoints).
+Source tests cover service implementations, WebFlux controllers, native JWT
+admission, and the full original generated API. Managed draft intake requires
+the matching regenerated Domain SDK; its composed source qualification builds
+the owning services and genuine SDKs together. Registry release and deployment
+adoption remain separate from this source qualification.
+
+## Managed draft application intake
+
+`POST /api/v1/experience/lending/application-intakes` creates an application in
+`DRAFT` / `PENDING_DOCUMENTS` through the generated Domain SDK. A first creation
+returns `201`; an exact replay returns `200` with the same application, terms,
+creation time, and owner digest. Preserve the original request ID and complete
+request when recovering an unavailable response. A changed request with the
+same ID is a conflict, not a new application.
+
+The error code `LENDING_INTAKE_COMMITTED_RESPONSE_UNAVAILABLE` identifies a
+known committed operation whose response cannot currently be delivered.
+`LENDING_INTAKE_OUTCOME_UNKNOWN` leaves the outcome unresolved. Both direct the
+caller to the same request ID and exact original terms; neither authorizes a
+replacement action or automatic compensation. Current authority is checked
+before disclosing the owner digest.
+
+This route uses verified native HUMAN credentials and subject-preserving token
+exchange from Experience to Domain to Core. Configure the resource server,
+exchange registration, and current authorization policy for the deployment.
+Experience has no business repository or direct Core SDK dependency for this
+operation.
+
+Controlled integration has exercised all three production services, generated
+SDK calls, concurrent replay, committed-response recovery, refused writes,
+service restart, and actual Core Spring Data/PostgreSQL application, primary
+borrower, audit, and outbox effects. Its issuer and policy are sandbox fixtures;
+default deployment authorization, the current combined Domain release, event
+delivery, and external providers require separate validation. This operation
+does not approve a loan, generate a contract, disburse funds, or qualify the
+complete lending lifecycle.
 
 
 ## Identity, access, and decisions
 
-Each journey command resolves the actor, then checks access, before it calls a domain port. A denial does not call the domain.
+The legacy journey adapters below resolve the actor and check access before
+calling a domain port. Managed draft intake uses the native credential and
+token-exchange path described above.
 
 1. **IdentityPort** posts to `POST /api/v1/identity/subjects` on domain-core-security-center. The default username is `sample-journey`, which resolves to actor `11111111-1111-4111-8111-111111111111`. `denied-actor` resolves to `22222222-2222-4222-8222-222222222222`. `sample-employee` resolves to `33333333-3333-4333-8333-333333333333`. Experience code does not call Keycloak. The security center property `firefly.security-center.identity.adapter` is `sandbox` by default, or `keycloak`, `cognito`, or `internal-db`.
 2. **AccessPort** posts to `POST /api/v1/access/checks` with the actor, action (`READ`, `CREATE`, `UPDATE`, `CLOSE`, or `DECIDE`), resource type, and resource id. The sample actor may READ and CREATE the sample resources. The denied actor receives `ACTOR_NOT_ENTITLED`.

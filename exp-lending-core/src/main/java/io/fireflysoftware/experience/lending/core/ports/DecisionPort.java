@@ -22,7 +22,7 @@ import reactor.core.publisher.Mono;
 /**
  * Risk decision for a journey step. The experience service does not embed rules.
  * <p>
- * {@code SandboxDecisionAdapter} is active unless a deployment sets
+ * {@code SandboxDecisionAdapterImpl} is active unless a deployment sets
  * {@code firefly.experience.decision.adapter=domain} and supplies a {@link RiskDecisionClient}.
  * A future BPM engine implements this port and replaces the domain adapter.
  */

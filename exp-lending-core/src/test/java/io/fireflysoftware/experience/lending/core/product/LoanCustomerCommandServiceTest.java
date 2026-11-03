@@ -68,12 +68,12 @@ class LoanCustomerCommandServiceTest {
     @Mock private CreditReportPort creditReports;
     @Mock private DecisionPort decisions;
 
-    private LoanCustomerCommandService servicing;
+    private LoanCustomerCommandServiceImpl servicing;
     private ApplicationServiceImpl applications;
 
     @BeforeEach
     void setUp() {
-        servicing = new LoanCustomerCommandService(identityPort, accessPort, catalog, loanServicingApi,
+        servicing = new LoanCustomerCommandServiceImpl(identityPort, accessPort, catalog, loanServicingApi,
                 creditProducts, payments, contracts);
         applications = new ApplicationServiceImpl(identityPort, accessPort, creditReports, decisions,
                 loanApplications, catalog, creditProducts, parameters());

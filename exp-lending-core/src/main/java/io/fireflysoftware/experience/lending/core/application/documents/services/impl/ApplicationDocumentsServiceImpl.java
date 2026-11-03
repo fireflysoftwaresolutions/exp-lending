@@ -19,10 +19,10 @@ package io.fireflysoftware.experience.lending.core.application.documents.service
 
 import io.fireflysoftware.domain.lending.loan.origination.sdk.api.LoanOriginationApi;
 import io.fireflysoftware.domain.lending.loan.origination.sdk.model.ApplicationDocumentDTO;
-import io.fireflysoftware.domain.lending.loan.origination.sdk.model.RegisterApplicationDocumentCommand;
 import io.fireflysoftware.experience.lending.core.application.documents.commands.UploadDocumentCommand;
 import io.fireflysoftware.experience.lending.core.application.documents.services.ApplicationDocumentsService;
-import io.fireflysoftware.experience.lending.core.util.IdempotencyKeys;
+import io.fireflysoftware.experience.lending.core.application.documents.evidence.*;
+import org.springframework.beans.factory.ObjectProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.fireflyframework.web.error.exceptions.BusinessException;
@@ -33,8 +33,10 @@ import reactor.core.publisher.Mono;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.UUID;
+import java.time.*;
+import java.nio.*;
+import java.nio.charset.*;
 
 /**
  * Default implementation of {@link ApplicationDocumentsService}, delegating to the
@@ -48,6 +50,7 @@ public class ApplicationDocumentsServiceImpl implements ApplicationDocumentsServ
     private static final String DEFAULT_MIME_TYPE = "application/octet-stream";
 
     private final LoanOriginationApi loanOriginationApi;
+    private final ObjectProvider<ApplicationEvidencePort> evidencePorts;
 
     @Override
     public Flux<io.fireflysoftware.experience.lending.core.application.documents.queries.ApplicationDocumentDTO> listDocuments(UUID applicationId) {
@@ -59,51 +62,43 @@ public class ApplicationDocumentsServiceImpl implements ApplicationDocumentsServ
     }
 
     @Override
-    public Mono<io.fireflysoftware.experience.lending.core.application.documents.queries.ApplicationDocumentDTO> uploadDocument(UUID applicationId, UploadDocumentCommand command) {
-        log.debug("Uploading document for applicationId={} fileName={}", applicationId, command.getFileName());
-
-        String resolvedMimeType = inferMimeType(command.getFileName());
-
-        var sdkCmd = new RegisterApplicationDocumentCommand()
-                .documentName(command.getFileName())
-                .documentTypeCode(command.getDocumentType())
-                .mimeType(resolvedMimeType)
-                .fileSizeBytes(command.getContent() != null ? (long) command.getContent().length : null);
-
-        // Same logical upload → same key. Avoids the duplicate-row hazard of UUID.randomUUID().
-        String attachKey = IdempotencyKeys.of(
-                "exp-lending", "upload-document",
-                applicationId.toString(),
-                String.valueOf(command.getFileName()),
-                String.valueOf(command.getDocumentType()),
-                command.getContent() != null ? String.valueOf(command.getContent().length) : "null");
-
-        return loanOriginationApi
-                .attachDocuments(applicationId, sdkCmd, attachKey)
-                .flatMap(response -> {
-                    UUID documentId = extractUuid(
-                            response instanceof Map<?, ?> m ? m : Map.of(),
-                            "applicationDocumentId");
-                    if (documentId == null) {
-                        return Mono.error(new BusinessException(
-                                HttpStatus.BAD_GATEWAY,
-                                "UPSTREAM_PROTOCOL_ERROR",
-                                "domain attachDocuments did not return applicationDocumentId"));
-                    }
-                    String getKey = IdempotencyKeys.of(
-                            "exp-lending", "upload-document", "get",
-                            applicationId.toString(), documentId.toString());
-                    return loanOriginationApi.getApplicationDocumentById(applicationId, documentId, getKey);
-                })
-                .map(this::mapToDTO);
+    public Mono<io.fireflysoftware.experience.lending.core.application.documents.queries.ApplicationDocumentDTO> uploadDocument(UUID applicationId,UploadDocumentCommand command){
+        final ApplicationEvidenceUpload request;
+        try{request=capture(applicationId,command);}catch(RuntimeException invalid){return Mono.error(invalid());}
+        return Mono.defer(()->{var port=port(request.actionId());return port.upload(applicationId,request).switchIfEmpty(Mono.error(new ApplicationEvidenceFailure(request.actionId(),ApplicationEvidenceError.Outcome.OUTCOME_UNKNOWN,java.util.Map.of())));})
+            .map(receipt->evidenceView(applicationId,request.actionId(),request,receipt));
     }
-
-    private UUID extractUuid(Map<?, ?> map, String key) {
-        Object value = map.get(key);
-        if (value instanceof String s) return UUID.fromString(s);
-        if (value instanceof UUID u) return u;
-        return null;
+    @Override
+    public Mono<io.fireflysoftware.experience.lending.core.application.documents.queries.ApplicationDocumentDTO> recoverDocument(UUID applicationId,UUID originalActionId){
+        if(!id(applicationId)||!id(originalActionId))return Mono.error(invalid());
+        return Mono.defer(()->port(originalActionId).recover(applicationId,originalActionId).switchIfEmpty(Mono.error(new ApplicationEvidenceFailure(originalActionId,ApplicationEvidenceError.Outcome.OUTCOME_UNKNOWN,java.util.Map.of()))))
+            .map(receipt->evidenceView(applicationId,originalActionId,null,receipt));
     }
+    private ApplicationEvidencePort port(UUID action){
+        try{var port=evidencePorts.getIfUnique();if(port!=null)return port;}catch(RuntimeException unavailable){throw new ApplicationEvidenceFailure(action,ApplicationEvidenceError.Outcome.OBSERVATION_UNAVAILABLE,java.util.Map.of());}
+        throw new ApplicationEvidenceFailure(action,ApplicationEvidenceError.Outcome.OBSERVATION_UNAVAILABLE,java.util.Map.of());
+    }
+    private static ApplicationEvidenceUpload capture(UUID application,UploadDocumentCommand command){
+        if(!id(application)||command==null||!id(command.getActionId())||command.getApplicationId()!=null&&!application.equals(command.getApplicationId()))throw invalid();
+        byte[] bytes=command.getContent();String name=command.getFileName(),type=command.getDocumentType();
+        if(bytes==null||bytes.length<1||bytes.length>2097152||name==null||name.isBlank()||name.length()>200||!name.equals(name.strip())||name.contains("/")||name.contains("\\")||java.util.Set.of(".","..").contains(name)||name.codePoints().anyMatch(Character::isISOControl)||type==null||!type.matches("[A-Z][A-Z0-9_]{0,49}"))throw invalid();
+        try{StandardCharsets.UTF_8.newEncoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT).encode(CharBuffer.wrap(name));}catch(CharacterCodingException malformed){throw invalid();}
+        return new ApplicationEvidenceUpload(command.getActionId(),name,type,inferMimeType(name),bytes);
+    }
+    private static io.fireflysoftware.experience.lending.core.application.documents.queries.ApplicationDocumentDTO evidenceView(UUID application,UUID action,ApplicationEvidenceUpload request,ApplicationEvidenceReceipt receipt){
+        if(receipt==null||!application.equals(receipt.applicationId())||!action.equals(receipt.actionId())||!id(receipt.partyId())||!id(receipt.documentId())||!id(receipt.associationId())||receipt.storedAt()==null||receipt.attachedAt()==null||receipt.contentLength()<1||receipt.contentLength()>2097152||!digest(receipt.contentDigest())||!digest(receipt.documentIntentDigest())||!digest(receipt.associationIntentDigest())||!"ATTACHED".equals(receipt.associationState())||!"PENDING".equals(receipt.verificationStatus())||receipt.fileName()==null||receipt.fileName().isBlank()||receipt.fileName().length()>200||!receipt.fileName().equals(receipt.fileName().strip())||receipt.fileName().contains("/")||receipt.fileName().contains("\\")||receipt.fileName().codePoints().anyMatch(Character::isISOControl)||receipt.documentTypeCode()==null||!receipt.documentTypeCode().matches("[A-Z][A-Z0-9_]{0,49}")||receipt.mediaType()==null||receipt.mediaType().length()>100||!receipt.mediaType().matches("[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+"))throw protocol(action);
+        if(request!=null&&(!request.fileName().equals(receipt.fileName())||!request.documentTypeCode().equals(receipt.documentTypeCode())||!request.mediaType().equals(receipt.mediaType())||request.content().length!=receipt.contentLength()||!hash(request.content()).equals(receipt.contentDigest())))throw protocol(action);
+        return io.fireflysoftware.experience.lending.core.application.documents.queries.ApplicationDocumentDTO.builder()
+            .documentId(receipt.associationId()).associationId(receipt.associationId()).storedDocumentId(receipt.documentId()).applicationId(application).actionId(action).partyId(receipt.partyId())
+            .fileName(receipt.fileName()).documentType(receipt.mediaType()).documentTypeCode(receipt.documentTypeCode()).mediaType(receipt.mediaType()).size(receipt.contentLength())
+            .uploadedAt(LocalDateTime.ofInstant(receipt.attachedAt(),ZoneOffset.UTC)).storedAt(receipt.storedAt()).attachedAt(receipt.attachedAt()).contentDigest(receipt.contentDigest()).documentIntentDigest(receipt.documentIntentDigest()).associationIntentDigest(receipt.associationIntentDigest())
+            .associationState(receipt.associationState()).verificationStatus(receipt.verificationStatus()).replayed(receipt.replayed()).build();
+    }
+    private static boolean id(UUID value){return value!=null&&!value.equals(new UUID(0,0));}
+    private static boolean digest(String value){return value!=null&&value.matches("[0-9a-f]{64}");}
+    private static String hash(byte[] bytes){try{return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes));}catch(java.security.NoSuchAlgorithmException impossible){throw new IllegalStateException("SHA-256 unavailable",impossible);}}
+    private static ApplicationEvidenceFailure protocol(UUID action){return new ApplicationEvidenceFailure(action,ApplicationEvidenceError.Outcome.OUTCOME_UNKNOWN,java.util.Map.of());}
+    private static BusinessException invalid(){return new BusinessException(HttpStatus.BAD_REQUEST,"APPLICATION_EVIDENCE_INPUT_INVALID","Original action and bounded actual content required");}
 
     /**
      * Best-effort mime-type inference from a filename's extension. Falls back to
@@ -149,6 +144,7 @@ public class ApplicationDocumentsServiceImpl implements ApplicationDocumentsServ
     private io.fireflysoftware.experience.lending.core.application.documents.queries.ApplicationDocumentDTO mapToDTO(ApplicationDocumentDTO src) {
         return io.fireflysoftware.experience.lending.core.application.documents.queries.ApplicationDocumentDTO.builder()
                 .documentId(src.getApplicationDocumentId())
+                .associationId(src.getApplicationDocumentId())
                 .applicationId(src.getLoanApplicationId())
                 .fileName(src.getDocumentName())
                 .documentType(src.getMimeType())

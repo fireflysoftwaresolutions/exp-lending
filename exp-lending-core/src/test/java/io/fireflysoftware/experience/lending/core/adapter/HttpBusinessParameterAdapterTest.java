@@ -36,7 +36,7 @@ class HttpBusinessParameterAdapterTest {
         BusinessParametersApi api = mock(BusinessParametersApi.class);
         when(api.getBusinessParameterByKey("journey.lending.min-credit-score"))
                 .thenReturn(Mono.just(new BusinessParameter().value("640")));
-        HttpBusinessParameterAdapter adapter = new HttpBusinessParameterAdapter(api);
+        HttpBusinessParameterAdapterImpl adapter = new HttpBusinessParameterAdapterImpl(api);
 
         String value = adapter.findByKey("journey.lending.min-credit-score").block(Duration.ofSeconds(2));
 

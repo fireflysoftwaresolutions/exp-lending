@@ -48,7 +48,7 @@ public class DomainDecisionConfiguration {
         String url = basePath.endsWith("/") ? basePath.substring(0, basePath.length() - 1) : basePath;
         ApiClient client = new ApiClient();
         client.setBasePath(url);
-        return new SdkDecisionClient(new DecisionApi(client));
+        return new SdkDecisionClientImpl(new DecisionApi(client));
     }
 
     @Bean
@@ -59,11 +59,11 @@ public class DomainDecisionConfiguration {
     /**
      * SDK client for {@code POST /api/v1/decisions}. Package-visible so tests can construct it.
      */
-    public static final class SdkDecisionClient implements RiskDecisionClient {
+    public static final class SdkDecisionClientImpl implements RiskDecisionClient {
 
         private final DecisionApi decisions;
 
-        public SdkDecisionClient(DecisionApi decisions) {
+        public SdkDecisionClientImpl(DecisionApi decisions) {
             this.decisions = decisions;
         }
 

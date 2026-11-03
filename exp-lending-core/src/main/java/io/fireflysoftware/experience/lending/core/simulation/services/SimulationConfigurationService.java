@@ -14,24 +14,24 @@
  * limitations under the License.
  */
 
-
 package io.fireflysoftware.experience.lending.core.simulation.services;
 
 import io.fireflysoftware.experience.lending.core.simulation.commands.ConfigureSimulationCommand;
 import io.fireflysoftware.experience.lending.core.simulation.queries.ConfiguredSimulationDTO;
+
 import reactor.core.publisher.Mono;
 
 /**
- * Orchestrates the simulation configuration flow:
- * (1) calculate via pricing-engine, then (2) persist via domain-lending-loan-origination.
+ * Validates simulation configuration before verified owner terms are available. Unverified
+ * calculations must not be persisted.
  */
 public interface SimulationConfigurationService {
 
     /**
-     * Configures and persists a lending simulation in a single reactive flow.
+     * Retains existing input validation and explicitly reports unavailable owner terms.
      *
      * @param command validated input from the caller
-     * @return a {@link Mono} emitting the persisted, fully-priced simulation
+     * @return a {@link Mono} failing with LENDING_TERMS_UNAVAILABLE after validation
      */
     Mono<ConfiguredSimulationDTO> configure(ConfigureSimulationCommand command);
 }

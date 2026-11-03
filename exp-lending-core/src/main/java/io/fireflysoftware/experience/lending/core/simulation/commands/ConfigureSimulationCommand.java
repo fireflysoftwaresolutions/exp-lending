@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-
 package io.fireflysoftware.experience.lending.core.simulation.commands;
 
 import jakarta.validation.constraints.Min;
@@ -22,6 +21,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -31,14 +31,14 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
- * Command for configuring a lending simulation. Drives a two-step flow:
- * (1) call pricing-engine to compute the simulation, (2) persist the result
- * via domain-lending-loan-origination.
+ * Input retained for lending simulation configuration. Existing validation remains active while
+ * verified owner terms are unavailable; no unverified calculation is persisted.
  *
  * <p>Cross-field rules (validated in the service layer):
+ *
  * <ul>
- *   <li>{@code productType=PERSONAL_LOAN} requires {@code purpose}.</li>
- *   <li>{@code productType=LEASING} requires {@code sector} and {@code assetType}.</li>
+ *   <li>{@code productType=PERSONAL_LOAN} requires {@code purpose}.
+ *   <li>{@code productType=LEASING} requires {@code sector} and {@code assetType}.
  * </ul>
  */
 @Data
@@ -52,13 +52,11 @@ public class ConfigureSimulationCommand {
     @Pattern(regexp = "^(PERSONAL_LOAN|LEASING)$")
     private String productType;
 
-    /** Optional explicit product identifier. When omitted, the engine resolves the default. */
+    /** Optional explicit product identifier. Its omission does not select a default product. */
     private UUID productId;
 
     /** Requested principal amount. Must be strictly positive. */
-    @NotNull
-    @Positive
-    private BigDecimal requestedAmount;
+    @NotNull @Positive private BigDecimal requestedAmount;
 
     /** Term in months. */
     @NotNull

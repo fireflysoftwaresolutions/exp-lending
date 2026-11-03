@@ -23,6 +23,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.time.Instant;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.UUID;
 
 /**
@@ -34,10 +36,31 @@ import java.util.UUID;
 @AllArgsConstructor
 public class ApplicationDocumentDTO {
 
+    @Schema(description="Legacy application-document association identifier; equals associationId, not storedDocumentId")
     private UUID documentId;
     private UUID applicationId;
     private String fileName;
     private String documentType;
+    @Schema(description="Legacy UTC display projection of attachedAt; authoritative owner timestamps are storedAt and attachedAt")
     private LocalDateTime uploadedAt;
     private Long size;
+
+    private UUID actionId;
+    private UUID partyId;
+    private UUID associationId;
+    private UUID storedDocumentId;
+    private String documentTypeCode;
+    private String mediaType;
+    private String contentDigest;
+    private String documentIntentDigest;
+    private String associationIntentDigest;
+    @Schema(ref="#/components/schemas/FireflyInstant")
+    private Instant storedAt;
+    @Schema(ref="#/components/schemas/FireflyInstant")
+    private Instant attachedAt;
+    private String associationState;
+    private String verificationStatus;
+    private Boolean replayed;
+
+    public ApplicationDocumentDTO(UUID documentId,UUID applicationId,String fileName,String documentType,LocalDateTime uploadedAt,Long size){this.documentId=documentId;this.applicationId=applicationId;this.fileName=fileName;this.documentType=documentType;this.uploadedAt=uploadedAt;this.size=size;}
 }

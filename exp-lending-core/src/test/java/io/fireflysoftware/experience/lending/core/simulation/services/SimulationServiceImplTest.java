@@ -14,90 +14,79 @@
  * limitations under the License.
  */
 
-
 package io.fireflysoftware.experience.lending.core.simulation.services;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 import io.fireflysoftware.domain.product.pricing.sdk.api.EligibilityApi;
 import io.fireflysoftware.domain.product.pricing.sdk.api.PricingApi;
-import io.fireflysoftware.domain.product.pricing.sdk.model.RegisterProductPricingCommand;
 import io.fireflysoftware.experience.lending.core.simulation.commands.CheckEligibilityCommand;
 import io.fireflysoftware.experience.lending.core.simulation.commands.CreateSimulationCommand;
-import io.fireflysoftware.experience.lending.core.simulation.queries.EligibilityResultDTO;
-import io.fireflysoftware.experience.lending.core.simulation.queries.SimulationResultDTO;
 import io.fireflysoftware.experience.lending.core.simulation.services.impl.SimulationServiceImpl;
+
+import org.fireflyframework.web.error.exceptions.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
+
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.math.BigDecimal;
-import java.util.Map;
 import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class SimulationServiceImplTest {
 
-    @Mock
-    private PricingApi pricingApi;
+    @Mock private PricingApi pricingApi;
 
-    @Mock
-    private EligibilityApi eligibilityApi;
+    @Mock private EligibilityApi eligibilityApi;
 
     private SimulationServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        service = new SimulationServiceImpl(pricingApi, eligibilityApi);
+        service = new SimulationServiceImpl(eligibilityApi);
     }
 
     @Test
-    void createSimulation_delegatesToPricingApi_andMapsResult() {
-        var productId = UUID.randomUUID();
-        var pricingId = UUID.randomUUID();
-        Map<String, Object> apiResponse = Map.of(
-                "productConfigurationId", pricingId.toString(),
-                "configValue", "5.5"
-        );
-
-        var command = new CreateSimulationCommand();
-        command.setAmount(new BigDecimal("10000"));
-        command.setTerm(24);
-        command.setProductType("PERSONAL_LOAN");
-        command.setProductId(productId);
-
-        when(pricingApi.registerPricing(any(RegisterProductPricingCommand.class), any()))
-                .thenReturn(Mono.just(apiResponse));
-
+    void createSimulation_requiresVerifiedOwnerTermsWithoutPricingWrites() {
+        var command =
+                new CreateSimulationCommand(
+                        new BigDecimal("10000"), 24, "PERSONAL_LOAN", UUID.randomUUID());
         StepVerifier.create(service.createSimulation(command))
-                .assertNext(result -> {
-                    assertThat(result).isNotNull();
-                    assertThat(result.getSimulationId()).isEqualTo(pricingId);
-                    assertThat(result.getAnnualRate()).isEqualByComparingTo("5.5");
-                    assertThat(result.getTerm()).isEqualTo(24);
-                    assertThat(result.getProductType()).isEqualTo("PERSONAL_LOAN");
-                })
-                .verifyComplete();
-    }
-
-    @Test
-    void createSimulation_propagatesUpstreamError() {
-        var command = new CreateSimulationCommand();
-        command.setProductId(UUID.randomUUID());
-
-        when(pricingApi.registerPricing(any(RegisterProductPricingCommand.class), any()))
-                .thenReturn(Mono.error(new RuntimeException("upstream error")));
-
-        StepVerifier.create(service.createSimulation(command))
-                .expectErrorMessage("upstream error")
+                .expectErrorSatisfies(
+                        error ->
+                                assertThat(error)
+                                        .isInstanceOfSatisfying(
+                                                BusinessException.class,
+                                                unavailable -> {
+                                                    assertThat(unavailable.getStatus())
+                                                            .isEqualTo(
+                                                                    HttpStatus.SERVICE_UNAVAILABLE);
+                                                    assertThat(unavailable.getCode())
+                                                            .isEqualTo("LENDING_TERMS_UNAVAILABLE");
+                                                }))
                 .verify();
+        verifyNoInteractions(pricingApi, eligibilityApi);
+    }
+
+    @Test
+    void createSimulation_repeatedSubscriptionsDoNotCallAnUpstream() {
+        var command =
+                new CreateSimulationCommand(
+                        new BigDecimal("10000"), 24, "PERSONAL_LOAN", UUID.randomUUID());
+        var result = service.createSimulation(command);
+        StepVerifier.create(result).expectError(BusinessException.class).verify();
+        StepVerifier.create(result).expectError(BusinessException.class).verify();
+        verifyNoInteractions(pricingApi, eligibilityApi);
     }
 
     @Test
@@ -105,10 +94,11 @@ class SimulationServiceImplTest {
         var productId = UUID.randomUUID();
         var partyId = UUID.randomUUID();
         var evaluationId = UUID.randomUUID();
-        var apiResponse = new io.fireflysoftware.domain.product.pricing.sdk.model.EligibilityResultDTO()
-                .evaluationId(evaluationId)
-                .eligible(true)
-                .maxAmount(new BigDecimal("50000"));
+        var apiResponse =
+                new io.fireflysoftware.domain.product.pricing.sdk.model.EligibilityResultDTO()
+                        .evaluationId(evaluationId)
+                        .eligible(true)
+                        .maxAmount(new BigDecimal("50000"));
 
         var command = new CheckEligibilityCommand();
         command.setPartyId(partyId);
@@ -119,22 +109,24 @@ class SimulationServiceImplTest {
                 .thenReturn(Mono.just(apiResponse));
 
         StepVerifier.create(service.checkEligibility(command))
-                .assertNext(result -> {
-                    assertThat(result.getEvaluationId()).isEqualTo(evaluationId);
-                    assertThat(result.isEligible()).isTrue();
-                    assertThat(result.getMaxAmount()).isEqualByComparingTo("50000");
-                    assertThat(result.getReasons()).isEmpty();
-                })
+                .assertNext(
+                        result -> {
+                            assertThat(result.getEvaluationId()).isEqualTo(evaluationId);
+                            assertThat(result.isEligible()).isTrue();
+                            assertThat(result.getMaxAmount()).isEqualByComparingTo("50000");
+                            assertThat(result.getReasons()).isEmpty();
+                        })
                 .verifyComplete();
     }
 
     @Test
     void checkEligibility_mapsIneligibleResponse() {
         var productId = UUID.randomUUID();
-        var apiResponse = new io.fireflysoftware.domain.product.pricing.sdk.model.EligibilityResultDTO()
-                .evaluationId(UUID.randomUUID())
-                .eligible(false)
-                .reasons(java.util.List.of("AMOUNT_ABOVE_MAXIMUM"));
+        var apiResponse =
+                new io.fireflysoftware.domain.product.pricing.sdk.model.EligibilityResultDTO()
+                        .evaluationId(UUID.randomUUID())
+                        .eligible(false)
+                        .reasons(java.util.List.of("AMOUNT_ABOVE_MAXIMUM"));
 
         var command = new CheckEligibilityCommand();
         command.setPartyId(UUID.randomUUID());
@@ -145,10 +137,11 @@ class SimulationServiceImplTest {
                 .thenReturn(Mono.just(apiResponse));
 
         StepVerifier.create(service.checkEligibility(command))
-                .assertNext(result -> {
-                    assertThat(result.isEligible()).isFalse();
-                    assertThat(result.getReasons()).containsExactly("AMOUNT_ABOVE_MAXIMUM");
-                })
+                .assertNext(
+                        result -> {
+                            assertThat(result.isEligible()).isFalse();
+                            assertThat(result.getReasons()).containsExactly("AMOUNT_ABOVE_MAXIMUM");
+                        })
                 .verifyComplete();
     }
 }
